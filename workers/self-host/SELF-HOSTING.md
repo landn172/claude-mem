@@ -94,6 +94,10 @@ Leave `CLAUDE_MEM_CLOUD_SYNC_DEVICE_ID` empty — the worker mints one. Then
 restart the worker and confirm:
 
 ```sh
+# the worker's port: CLAUDE_MEM_WORKER_PORT, else the value in
+# ~/.claude-mem/settings.json, else the per-uid default 37700 + (uid % 100)
+PORT="${CLAUDE_MEM_WORKER_PORT:-$(node -e "const fs=require('fs'),p=require('path'),os=require('os');const uid=(typeof process.getuid==='function'?process.getuid():77);const fb=String(37700+(uid%100));try{const s=JSON.parse(fs.readFileSync(p.join(os.homedir(),'.claude-mem','settings.json'),'utf-8'));const e=s.env&&typeof s.env==='object'?s.env:s;process.stdout.write(String(e.CLAUDE_MEM_WORKER_PORT||s.CLAUDE_MEM_WORKER_PORT||fb));}catch{process.stdout.write(fb);}" 2>/dev/null)}"
+
 curl -s -X POST http://127.0.0.1:$PORT/api/admin/restart
 curl -s http://127.0.0.1:$PORT/api/sync/status   # configured:true, hub.reachable:true
 ```
