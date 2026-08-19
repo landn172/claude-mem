@@ -47,7 +47,7 @@ Ask for all three values from the user's SyncHub deployment:
 
 On static-token hubs these map to `SYNC_STATIC_TOKEN`, `SYNC_STATIC_USER_ID`,
 and the hub's public `https://` URL (see
-https://docs.claude-mem.ai/self-hosted-sync).
+https://github.com/frarredondo/claude-mem/blob/main/docs/public/self-hosted-sync.mdx).
 
 The Hub URL must be an absolute `https://` SyncHub URL. Do not use an
 application API URL; the installed client talks only to SyncHub.
