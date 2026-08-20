@@ -2,15 +2,16 @@
  * TEMPLATE for the projector + MCP worker of an ADDITIONAL isolated group
  * (pairs with workers/sync-hub/wrangler.group.jsonc). Copy once per group:
  *
- *   cp wrangler.group.jsonc wrangler.work.local.jsonc   # gitignored
- *   wrangler d1 create cmem-memory-work   # paste the id below
- *   wrangler deploy -c wrangler.work.local.jsonc
+ *   cp wrangler.group.jsonc wrangler.personal-2.local.jsonc   # gitignored
+ *   wrangler d1 create cmem-memory-personal-2   # paste the id below
+ *   wrangler deploy -c wrangler.personal-2.local.jsonc
  *
  * Deploy this BEFORE the group's hub, which binds to it by name. Never share
  * one projector between groups: these tables have no user_id column, so both
  * corpora would merge and either MCP_TOKEN would read all of it.
  * Secrets: CMEM_INTERNAL_PROJECTOR_SECRET (matching this group's hub),
- * MCP_TOKEN. The schema applies itself on first use.
+ * MCP_TOKEN. MCP_SERVER_NAME below is the name reported in the MCP handshake.
+ * The schema applies itself on first use.
  */
 {
 	"name": "cmem-self-host-<GROUP>",
@@ -24,6 +25,11 @@
 			"database_id": "REPLACE_WITH_THIS_GROUPS_D1_DATABASE_ID"
 		}
 	],
+	"vars": {
+		// Reported in the MCP initialize handshake so clients can tell this
+		// group's server from another's. Defaults to "cmem-self-host".
+		"MCP_SERVER_NAME": "cmem-self-host-<GROUP>"
+	},
 	"observability": {
 		"enabled": true
 	}

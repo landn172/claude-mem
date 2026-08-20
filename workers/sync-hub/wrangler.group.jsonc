@@ -1,11 +1,13 @@
 /**
  * TEMPLATE for an ADDITIONAL isolated group. Copy once per group:
  *
- *   cp wrangler.group.jsonc wrangler.work.local.jsonc   # gitignored
+ *   cp wrangler.group.jsonc wrangler.personal-2.local.jsonc   # gitignored
  *   # replace <GROUP> with the slug, fill in the REPLACE_WITH_* values
- *   wrangler deploy -c wrangler.work.local.jsonc
+ *   wrangler deploy -c wrangler.personal-2.local.jsonc
  *
- * Each group needs its own hub AND its own projector + D1: the projector is
+ * <GROUP> becomes a Worker name: alphanumerics and dashes only, no
+ * underscores. Each group needs its own hub AND its own projector + D1: the
+ * projector is
  * single-tenant (no user_id column), so a shared one merges both corpora.
  * Secrets, per group: SYNC_STATIC_TOKEN, CMEM_INTERNAL_PROJECTOR_SECRET.
  * See docs/public/self-hosted-sync.mdx for the full rationale.

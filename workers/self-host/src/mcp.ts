@@ -11,6 +11,7 @@ import { authorized, bearerToken, secretsMatch } from "./auth";
 import { ensureSchema } from "./schema";
 
 const DEFAULT_PROTOCOL = "2025-06-18";
+const DEFAULT_SERVER_NAME = "cmem-self-host";
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
 
 const WORKFLOW_TEXT = `# Memory Search Workflow
@@ -133,7 +134,7 @@ export async function handleMcp(
 		return jsonRpcResult(id, {
 			protocolVersion: SUPPORTED_PROTOCOLS.has(requested) ? requested : DEFAULT_PROTOCOL,
 			capabilities: { tools: { listChanged: false } },
-			serverInfo: { name: "cmem-self-host", version: "1.0.0" },
+			serverInfo: { name: (env.MCP_SERVER_NAME ?? "").trim() || DEFAULT_SERVER_NAME, version: "1.0.0" },
 		});
 	}
 	if (method === "ping") {

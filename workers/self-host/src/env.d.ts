@@ -9,4 +9,10 @@ interface Env {
 	CMEM_INTERNAL_PROJECTOR_SECRET?: string;
 	/** Remote MCP credential (bearer header or /u/<token>/mcp path form). */
 	MCP_TOKEN?: string;
+	/**
+	 * Name this server reports in the MCP `initialize` handshake. Set it per
+	 * group so isolated deployments are distinguishable in a client's server
+	 * list; defaults to "cmem-self-host".
+	 */
+	MCP_SERVER_NAME?: string;
 }

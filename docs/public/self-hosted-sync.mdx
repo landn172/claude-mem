@@ -204,8 +204,7 @@ resumes it without losing rows.
 ## Running isolated groups
 
 One deployment serves exactly one group of machines. To keep two sets of
-machines from ever seeing each other's memory — work and personal, say — run a
-second stack.
+machines from ever seeing each other's memory, run a second stack.
 
 The hub routes every request to `env.SYNC_HUB.getByName(userId)`, so one user
 id is one Durable Object and one ordered log; different user ids never see each
@@ -222,38 +221,44 @@ it.
 
 So each group gets its own hub *and* its own projector:
 
-| Per group | Work | Personal |
+| Per group | `personal` | `personal-2` |
 |---|---|---|
-| Hub worker | `sync-hub-work` | `sync-hub-personal` |
+| Hub worker | `sync-hub-personal` | `sync-hub-personal-2` |
 | KV namespace | its own | its own |
 | `SYNC_STATIC_USER_ID` | a fresh uuid | a different uuid |
 | `SYNC_STATIC_TOKEN` | its own | its own |
-| Projector worker | `cmem-self-host-work` | `cmem-self-host` |
-| D1 database | `cmem-memory-work` | `cmem-memory` |
+| Projector worker | `cmem-self-host` | `cmem-self-host-personal-2` |
+| D1 database | `cmem-memory` | `cmem-memory-personal-2` |
 | `CMEM_INTERNAL_PROJECTOR_SECRET` | its own | its own |
 | `MCP_TOKEN` | its own | its own |
+| `MCP_SERVER_NAME` | `cmem-self-host` | `cmem-self-host-personal-2` |
 
 Two committed templates carry the `<GROUP>` placeholders — copy each once per
 group, replace `<GROUP>` with the slug, and deploy the projector first:
 
 ```sh
 cd workers/self-host
-cp wrangler.group.jsonc wrangler.work.local.jsonc   # gitignored
-wrangler d1 create cmem-memory-work                 # paste the id in
-wrangler secret put CMEM_INTERNAL_PROJECTOR_SECRET -c wrangler.work.local.jsonc
-wrangler secret put MCP_TOKEN                      -c wrangler.work.local.jsonc
-wrangler deploy -c wrangler.work.local.jsonc
+cp wrangler.group.jsonc wrangler.personal-2.local.jsonc   # gitignored
+wrangler d1 create cmem-memory-personal-2                 # paste the id in
+wrangler secret put CMEM_INTERNAL_PROJECTOR_SECRET -c wrangler.personal-2.local.jsonc
+wrangler secret put MCP_TOKEN                      -c wrangler.personal-2.local.jsonc
+wrangler deploy -c wrangler.personal-2.local.jsonc
 
 cd ../sync-hub
-cp wrangler.group.jsonc wrangler.work.local.jsonc
-wrangler kv namespace create sync-hub-work-AUTH_CACHE
-wrangler secret put SYNC_STATIC_TOKEN              -c wrangler.work.local.jsonc
-wrangler secret put CMEM_INTERNAL_PROJECTOR_SECRET -c wrangler.work.local.jsonc
-wrangler deploy -c wrangler.work.local.jsonc
+cp wrangler.group.jsonc wrangler.personal-2.local.jsonc
+wrangler kv namespace create sync-hub-personal-2-AUTH_CACHE
+wrangler secret put SYNC_STATIC_TOKEN              -c wrangler.personal-2.local.jsonc
+wrangler secret put CMEM_INTERNAL_PROJECTOR_SECRET -c wrangler.personal-2.local.jsonc
+wrangler deploy -c wrangler.personal-2.local.jsonc
 ```
 
 Then give each machine its own group's three values from step 5, and register
-each group's MCP endpoint under its own name (`cmem-work`, `cmem-personal`).
+each group's MCP endpoint under its own alias. Set `MCP_SERVER_NAME` per
+group so the two servers identify themselves distinctly in an MCP client's
+server list; it defaults to `cmem-self-host`.
+
+Group slugs become Worker names, so they take alphanumerics and dashes only —
+`personal-2`, never `personal_2`.
 
 Three things to know before you commit to this shape:
 
@@ -264,9 +269,9 @@ Three things to know before you commit to this shape:
 - **Quotas are per Cloudflare account, not per group.** Every stack draws on
   the same daily Durable Objects and D1 allowances; two groups do not get two
   free tiers.
-- **Credentials are genuinely isolated.** A leaked work token cannot reach
-  personal memory: the hub 403s a user id its token does not own, and the two
-  projectors share no database.
+- **Credentials are genuinely isolated.** One group's leaked token cannot
+  reach another's memory: the hub 403s a user id its token does not own, and
+  the two projectors share no database.
 
 ## Operating notes
 

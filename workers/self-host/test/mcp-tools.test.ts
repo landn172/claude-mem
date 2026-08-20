@@ -7,7 +7,7 @@
  * these tests cover the projection → query pipeline end to end.
  */
 
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 import { contentOp, observationPayload, projectionBody, projectRequest, summaryPayload } from "./fixtures";
 
@@ -155,6 +155,42 @@ describe("mcp protocol basics", () => {
 		expect(result.protocolVersion).toBe("2025-06-18");
 		expect((result.serverInfo as { name: string }).name).toBe("cmem-self-host");
 		expect((result.capabilities as { tools: unknown }).tools).toBeDefined();
+	});
+
+	it("reports MCP_SERVER_NAME when set, so isolated groups are distinguishable", async () => {
+		const previous = env.MCP_SERVER_NAME;
+		env.MCP_SERVER_NAME = "cmem-self-host-personal-2";
+		try {
+			const res = await rpc({
+				jsonrpc: "2.0",
+				id: nextId++,
+				method: "initialize",
+				params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0.0.0" } },
+			});
+			const body = (await res.json()) as JsonRpcResponse;
+			const result = body.result as Record<string, unknown>;
+			expect((result.serverInfo as { name: string }).name).toBe("cmem-self-host-personal-2");
+		} finally {
+			env.MCP_SERVER_NAME = previous;
+		}
+	});
+
+	it("falls back to the default name when MCP_SERVER_NAME is blank", async () => {
+		const previous = env.MCP_SERVER_NAME;
+		env.MCP_SERVER_NAME = "   ";
+		try {
+			const res = await rpc({
+				jsonrpc: "2.0",
+				id: nextId++,
+				method: "initialize",
+				params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0.0.0" } },
+			});
+			const body = (await res.json()) as JsonRpcResponse;
+			const result = body.result as Record<string, unknown>;
+			expect((result.serverInfo as { name: string }).name).toBe("cmem-self-host");
+		} finally {
+			env.MCP_SERVER_NAME = previous;
+		}
 	});
 
 	it("accepts notifications/initialized with 202", async () => {
