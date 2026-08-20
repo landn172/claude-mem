@@ -1,39 +1,14 @@
 /**
- * TEMPLATE for an ADDITIONAL isolated group on a self-hosted deployment —
- * a second (third, nth) set of machines whose memory never mixes with the
- * first. Copy it once per group:
+ * TEMPLATE for an ADDITIONAL isolated group. Copy once per group:
  *
  *   cp wrangler.group.jsonc wrangler.work.local.jsonc   # gitignored
- *   # replace every <GROUP> with the group slug (work, personal, lab, …)
- *   # then fill in the REPLACE_WITH_* values
+ *   # replace <GROUP> with the slug, fill in the REPLACE_WITH_* values
  *   wrangler deploy -c wrangler.work.local.jsonc
  *
- * WHY A WHOLE SECOND STACK: the hub routes each request to
- * `env.SYNC_HUB.getByName(userId)`, so one user id is one Durable Object and
- * one ordered log — different user ids never see each other's ops. But static
- * auth binds the token to exactly ONE user id (a foreign X-User-Id is a 403),
- * so a deployment serves exactly one group. The companion projector is
- * single-tenant too: its D1 tables are keyed by entity_id with NO user_id
- * column, and the MCP queries never filter by user. Pointing two hubs at one
- * projector merges both corpora into one searchable store — so each group
- * needs its own hub AND its own projector + D1 database.
- *
- * Per-group resources (nothing shared with another group):
- *   - this worker: sync-hub-<GROUP>
- *   - its own KV namespace (kill-switch flag only, in static mode)
- *   - its own SYNC_STATIC_USER_ID (a fresh uuid) and SYNC_STATIC_TOKEN
- *   - its own projector worker cmem-self-host-<GROUP> + D1 cmem-memory-<GROUP>
- *   - its own CMEM_INTERNAL_PROJECTOR_SECRET and MCP_TOKEN
- *
- * Account-level quotas are NOT per group: every stack in one Cloudflare
- * account draws on the same daily Durable Objects and D1 allowances.
- *
- * Secrets (wrangler secret put <NAME> -c wrangler.<GROUP>.local.jsonc):
- *   SYNC_STATIC_TOKEN              — openssl rand -hex 32; goes into
- *                                    CLAUDE_MEM_CLOUD_SYNC_TOKEN on this
- *                                    group's machines only.
- *   CMEM_INTERNAL_PROJECTOR_SECRET — openssl rand -hex 32; shared ONLY with
- *                                    this group's projector worker.
+ * Each group needs its own hub AND its own projector + D1: the projector is
+ * single-tenant (no user_id column), so a shared one merges both corpora.
+ * Secrets, per group: SYNC_STATIC_TOKEN, CMEM_INTERNAL_PROJECTOR_SECRET.
+ * See docs/public/self-hosted-sync.mdx for the full rationale.
  */
 {
 	"name": "sync-hub-<GROUP>",
@@ -53,10 +28,7 @@
 			}
 		]
 	},
-	// Same-zone workers.dev fetches do not route Worker-to-Worker, so the
-	// projector is reached through a service binding. It must name THIS
-	// group's projector — pointing two hubs at one projector merges the two
-	// corpora (see the header).
+	// Must name THIS group's projector: a shared projector merges both corpora.
 	"services": [
 		{
 			"binding": "PROJECTOR",
@@ -66,28 +38,21 @@
 	"kv_namespaces": [
 		{
 			"binding": "AUTH_CACHE",
-			// Created per group via
-			// `wrangler kv namespace create sync-hub-<GROUP>-AUTH_CACHE`
-			// (resource id, not a secret).
+			// wrangler kv namespace create sync-hub-<GROUP>-AUTH_CACHE
 			"id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
 		}
 	],
 	"vars": {
 		"AUTH_MODE": "static",
-		// A FRESH uuid for this group — never reuse another group's user id, or
-		// both groups land in the same Durable Object and the isolation is gone.
-		// The same value goes into CLAUDE_MEM_CLOUD_SYNC_USER_ID on this group's
-		// machines.
+		// A FRESH uuid: reusing another group's user id puts both in the same
+		// Durable Object and the isolation is gone.
 		"SYNC_STATIC_USER_ID": "REPLACE_WITH_THIS_GROUPS_USER_ID",
-		// Unused in static mode; kept empty so any accidental fall-through to
-		// the verify path fails closed.
+		// Unused in static mode; empty so a fall-through fails closed.
 		"TOKEN_VERIFY_URL": "",
 		"AUTH_CACHE_TTL_SECONDS": "60",
-		// This group's projector.
 		"INTERNAL_PROJECTOR_URL": "https://cmem-self-host-<GROUP>.<SUBDOMAIN>.workers.dev/internal/project",
 		"KILL_SWITCH_CACHE_MS": "",
-		// Watchdog vars deliberately empty AND no crons: fleet-ops alerting is
-		// not a personal-deployment concern.
+		// Watchdog vars empty and no crons: fleet-ops alerting, not needed here.
 		"ACCOUNT_ID": "",
 		"WATCHDOG_DO_NAMESPACE_ID": "",
 		"WATCHDOG_SCRIPT_NAME": "",
