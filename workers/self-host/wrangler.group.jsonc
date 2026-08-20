@@ -1,0 +1,45 @@
+/**
+ * TEMPLATE for the projector + MCP worker of an ADDITIONAL isolated group
+ * (pairs with workers/sync-hub/wrangler.group.jsonc). Copy it once per group:
+ *
+ *   cp wrangler.group.jsonc wrangler.work.local.jsonc   # gitignored
+ *   # replace every <GROUP> with the same slug used for the hub
+ *   wrangler d1 create cmem-memory-work   # paste the id below
+ *   wrangler deploy -c wrangler.work.local.jsonc
+ *
+ * ONE PROJECTOR PER GROUP, NOT ONE SHARED: these D1 tables are keyed by
+ * entity_id with NO user_id column, and the MCP tools filter by project and
+ * timestamp — never by user. A projector shared between two hubs therefore
+ * merges both groups' observations into one searchable store, and either
+ * group's MCP_TOKEN reads all of it. Give every group its own worker and its
+ * own D1 database.
+ *
+ * Deploy this BEFORE the group's hub: the hub reaches it through a service
+ * binding, which fails to deploy while the target worker does not exist.
+ *
+ * Secrets (wrangler secret put <NAME> -c wrangler.<GROUP>.local.jsonc):
+ *   CMEM_INTERNAL_PROJECTOR_SECRET — must equal THIS group's hub copy, and
+ *                                    must differ from other groups'.
+ *   MCP_TOKEN                      — openssl rand -hex 32; the remote MCP
+ *                                    credential for this group's memory only.
+ *
+ * The schema is applied lazily and idempotently on first use — no
+ * `wrangler d1 execute` step.
+ */
+{
+	"name": "cmem-self-host-<GROUP>",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-14",
+	"d1_databases": [
+		{
+			"binding": "MEMDB",
+			"database_name": "cmem-memory-<GROUP>",
+			// Created via `wrangler d1 create cmem-memory-<GROUP>`
+			// (resource id, not a secret). Never point two groups at one id.
+			"database_id": "REPLACE_WITH_THIS_GROUPS_D1_DATABASE_ID"
+		}
+	],
+	"observability": {
+		"enabled": true
+	}
+}

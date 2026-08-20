@@ -61,3 +61,6 @@ workers/self-host/wrangler.local.jsonc
 workers/self-host/.dev.vars*
 workers/self-host/.wrangler/
 workers/.wrangler/
+# per-group copies of the isolated-group templates (wrangler.<group>.local.jsonc)
+workers/sync-hub/wrangler.*.local.jsonc
+workers/self-host/wrangler.*.local.jsonc

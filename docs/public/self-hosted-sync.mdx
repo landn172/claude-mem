@@ -201,6 +201,73 @@ entities and duplicates it on every device.
 A large backfill can span the Free plan's daily caps. The client's backoff
 resumes it without losing rows.
 
+## Running isolated groups
+
+One deployment serves exactly one group of machines. To keep two sets of
+machines from ever seeing each other's memory — work and personal, say — run a
+second stack.
+
+The hub routes every request to `env.SYNC_HUB.getByName(userId)`, so one user
+id is one Durable Object and one ordered log; different user ids never see each
+other's ops. But static auth binds the token to exactly one user id (a foreign
+`X-User-Id` gets a 403, not a 401), so one hub serves one group.
+
+<Warning>
+**Do not share the projector between groups.** Its D1 tables are keyed by
+`entity_id` with no `user_id` column, and the MCP tools filter by project and
+timestamp — never by user. Two hubs pointed at one projector merge both
+corpora into one searchable store, and either group's `MCP_TOKEN` reads all of
+it.
+</Warning>
+
+So each group gets its own hub *and* its own projector:
+
+| Per group | Work | Personal |
+|---|---|---|
+| Hub worker | `sync-hub-work` | `sync-hub-personal` |
+| KV namespace | its own | its own |
+| `SYNC_STATIC_USER_ID` | a fresh uuid | a different uuid |
+| `SYNC_STATIC_TOKEN` | its own | its own |
+| Projector worker | `cmem-self-host-work` | `cmem-self-host` |
+| D1 database | `cmem-memory-work` | `cmem-memory` |
+| `CMEM_INTERNAL_PROJECTOR_SECRET` | its own | its own |
+| `MCP_TOKEN` | its own | its own |
+
+Two committed templates carry the `<GROUP>` placeholders — copy each once per
+group, replace `<GROUP>` with the slug, and deploy the projector first:
+
+```sh
+cd workers/self-host
+cp wrangler.group.jsonc wrangler.work.local.jsonc   # gitignored
+wrangler d1 create cmem-memory-work                 # paste the id in
+wrangler secret put CMEM_INTERNAL_PROJECTOR_SECRET -c wrangler.work.local.jsonc
+wrangler secret put MCP_TOKEN                      -c wrangler.work.local.jsonc
+wrangler deploy -c wrangler.work.local.jsonc
+
+cd ../sync-hub
+cp wrangler.group.jsonc wrangler.work.local.jsonc
+wrangler kv namespace create sync-hub-work-AUTH_CACHE
+wrangler secret put SYNC_STATIC_TOKEN              -c wrangler.work.local.jsonc
+wrangler secret put CMEM_INTERNAL_PROJECTOR_SECRET -c wrangler.work.local.jsonc
+wrangler deploy -c wrangler.work.local.jsonc
+```
+
+Then give each machine its own group's three values from step 5, and register
+each group's MCP endpoint under its own name (`cmem-work`, `cmem-personal`).
+
+Three things to know before you commit to this shape:
+
+- **A machine belongs to exactly one group.** The three settings live in
+  `~/.claude-mem/settings.json` and apply to the whole install — there is no
+  per-project or per-directory routing, so a machine's entire corpus goes to
+  whichever hub it points at.
+- **Quotas are per Cloudflare account, not per group.** Every stack draws on
+  the same daily Durable Objects and D1 allowances; two groups do not get two
+  free tiers.
+- **Credentials are genuinely isolated.** A leaked work token cannot reach
+  personal memory: the hub 403s a user id its token does not own, and the two
+  projectors share no database.
+
 ## Operating notes
 
 - **Rotating the sync token:** `wrangler secret put SYNC_STATIC_TOKEN -c
