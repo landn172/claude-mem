@@ -1,0 +1,102 @@
+/**
+ * TEMPLATE for a personal self-hosted deployment of the sync hub. This file
+ * stays committed with placeholders only — your real resource ids and
+ * workers.dev URLs live in a gitignored copy:
+ *
+ *   cp wrangler.personal.jsonc wrangler.personal.local.jsonc
+ *   # fill in the REPLACE_WITH_* values and <SUBDOMAIN>
+ *   wrangler deploy -c wrangler.personal.local.jsonc
+ *
+ * (Resource ids are not credentials, but keeping them out of the repo keeps
+ * your endpoints un-probeable from the public history.)
+ *
+ * Differences from the cmem.ai config (wrangler.jsonc):
+ *
+ *   - AUTH_MODE=static: one shared token (SYNC_STATIC_TOKEN secret) and one
+ *     canonical user id below replace the cmem.ai verify endpoint entirely —
+ *     no outbound verification, no KV verdict traffic.
+ *   - No `triggers` block: the watchdog and control-plane probe never run
+ *     (both are cmem.ai fleet-ops tooling; unconfigured they'd skip anyway).
+ *   - INTERNAL_PROJECTOR_URL points at the companion self-host worker
+ *     (workers/self-host), which projects canonical ops into D1 and serves
+ *     the remote MCP endpoint. The hub REQUIRES a live projector: pushes are
+ *     503 until the projection checkpoint covers head_seq.
+ *
+ * Secrets (wrangler secret put <NAME> -c wrangler.personal.local.jsonc):
+ *   SYNC_STATIC_TOKEN              — openssl rand -hex 32; the same value goes
+ *                                    into CLAUDE_MEM_CLOUD_SYNC_TOKEN on every
+ *                                    machine.
+ *   CMEM_INTERNAL_PROJECTOR_SECRET — openssl rand -hex 32; shared with the
+ *                                    self-host worker. Also the credential for
+ *                                    the /internal/v1/sync/* admin routes
+ *                                    (reset, metadata, repair drain).
+ */
+{
+	"name": "sync-hub-personal",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-14",
+	"exports": {
+		"SyncHub": {
+			"type": "durable-object",
+			"storage": "sqlite"
+		}
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "SYNC_HUB",
+				"class_name": "SyncHub"
+			}
+		]
+	},
+	// Same-zone workers.dev fetches do not route Worker-to-Worker, so the
+	// projector is reached through a service binding (src/index.ts
+	// projectorBindingFetch); INTERNAL_PROJECTOR_URL below stays the logical
+	// request URL delivered to the bound Worker.
+	"services": [
+		{
+			"binding": "PROJECTOR",
+			"service": "cmem-self-host"
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "AUTH_CACHE",
+			// Created via `wrangler kv namespace create sync-hub-personal-AUTH_CACHE`
+			// (resource id, not a secret). In static mode this namespace only carries
+			// the kill-switch flag (control: prefix) — auth never touches it.
+			"id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+		}
+	],
+	"vars": {
+		"AUTH_MODE": "static",
+		// The one canonical user id for this deployment (minted once, not a
+		// secret — every request presents it in X-User-Id; authorization comes
+		// from the token). The same value goes into CLAUDE_MEM_CLOUD_SYNC_USER_ID
+		// on every machine.
+		"SYNC_STATIC_USER_ID": "REPLACE_WITH_YOUR_USER_ID",
+		// Unused in static mode; kept empty so any accidental fall-through to
+		// the verify path fails closed instead of calling cmem.ai.
+		"TOKEN_VERIFY_URL": "",
+		"AUTH_CACHE_TTL_SECONDS": "60",
+		// The companion self-host worker (projector + MCP).
+		"INTERNAL_PROJECTOR_URL": "https://cmem-self-host.<SUBDOMAIN>.workers.dev/internal/project",
+		"KILL_SWITCH_CACHE_MS": "",
+		// Watchdog vars deliberately empty AND no crons above: fleet-ops
+		// alerting is a cmem.ai concern.
+		"ACCOUNT_ID": "",
+		"WATCHDOG_DO_NAMESPACE_ID": "",
+		"WATCHDOG_SCRIPT_NAME": "",
+		"WATCHDOG_REQUESTS_ALERT": "",
+		"WATCHDOG_REQUESTS_KILL": "",
+		"WATCHDOG_DURATION_ALERT_GBS": "",
+		"WATCHDOG_DURATION_KILL_GBS": "",
+		"WATCHDOG_ROWS_WRITTEN_ALERT": "",
+		"WATCHDOG_ROWS_WRITTEN_KILL": "",
+		"WATCHDOG_ROWS_READ_ALERT": "",
+		"WATCHDOG_ROWS_READ_KILL": ""
+	},
+	"observability": {
+		"enabled": true
+	}
+}

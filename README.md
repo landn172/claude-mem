@@ -212,6 +212,7 @@ The installer handles dependencies, plugin setup, AI provider configuration, wor
 - **[Usage Guide](https://docs.claude-mem.ai/usage/getting-started)** - How Claude-Mem works automatically
 - **[Search Tools](https://docs.claude-mem.ai/usage/search-tools)** - Query your project history with natural language
 - **[Cloud Sync](https://docs.claude-mem.ai/cloud-sync)** - Back up your memories to cmem.ai — no daemon, the worker syncs on write
+- **[Self-Hosted Cloud Sync](https://github.com/frarredondo/claude-mem/blob/main/docs/public/self-hosted-sync.mdx)** - Run the sync hub on your own Cloudflare account
 
 ### Best Practices
 

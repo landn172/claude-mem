@@ -1,17 +1,17 @@
 ---
 name: cloud-sync
-description: Set up or check claude-mem cloud sync with cmem.ai Pro. Use when the user says "set up cloud sync", "sync my memories", "cmem pro", "cloud backup", "sync status", or wants their memory database backed up or synced to their cmem.ai account.
+description: Set up or check claude-mem cloud sync against a SyncHub deployment. Use when the user says "set up cloud sync", "sync my memories", "cloud backup", "sync status", "self-hosted sync", "SyncHub", or wants their memory database backed up or synced across machines.
 allowed-tools:
   - Bash
   - Read
   - AskUserQuestion
 ---
 
-# Cloud Sync (cmem.ai Pro)
+# Cloud Sync
 
 The installed worker syncs through SyncHub. There is one client, one durable
 operation log, and no separate sync daemon. This skill checks status or writes
-the three connection values issued by **cmem.ai → Connect**.
+the three values that connect this machine to a SyncHub deployment.
 
 **Security rule:** never print the sync token, put it in argv, or log it.
 Confirm only its length. Preserve every unrelated setting and keep
@@ -39,13 +39,17 @@ curl -s "http://127.0.0.1:${PORT}/api/sync/status"
 
 ## 2. Obtain the connection
 
-Ask for all three values shown by **cmem.ai → Connect**:
+Ask for all three values from the user's SyncHub deployment:
 
 1. sync token;
 2. user id;
 3. SyncHub URL.
 
-The Hub URL must be an absolute `https://` URL. Do not substitute the cmem.ai
+On static-token hubs these map to `SYNC_STATIC_TOKEN`, `SYNC_STATIC_USER_ID`,
+and the hub's public `https://` URL (see
+https://github.com/frarredondo/claude-mem/blob/main/docs/public/self-hosted-sync.mdx).
+
+The Hub URL must be an absolute `https://` SyncHub URL. Do not use an
 application API URL; the installed client talks only to SyncHub.
 
 ## 3. Write installed-client settings
@@ -90,18 +94,18 @@ Poll the status route every five seconds for up to 30 seconds while the
 successor starts. Success means `configured: true`, `hub.reachable: true`, and
 `lastError: null`. The local route always makes an authenticated, read-only
 SyncHub status probe, even when every pending count is zero; it never uses a
-legacy cmem.ai Pro status route and never appends or advances sync state.
+legacy status route and never appends or advances sync state.
 Pending counts describe only writes made after the SyncHub launch baseline;
 setup does not migrate a pre-launch local corpus.
 
 If `hub.reachable` is false, report `hub.error`. If `lastError` is non-null,
-report it too. Ask the user to verify the three values in **cmem.ai →
-Connect**. Never include the token.
+report it too. Ask the user to re-check the three values against their SyncHub
+deployment. Never include the token.
 
 ## 5. Report
 
 Report device id, pending counts, last successful flush, Hub reachability and
 checkpoint, and any Hub/flush error. End with this privacy note:
 
-> Cloud sync uploads your observation narratives and full prompt text to your
-> cmem.ai account.
+> Cloud sync uploads your observation narratives and full prompt text to the
+> sync hub you are connected to.

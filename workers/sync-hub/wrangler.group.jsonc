@@ -1,0 +1,73 @@
+/**
+ * TEMPLATE for an ADDITIONAL isolated group. Copy once per group:
+ *
+ *   cp wrangler.group.jsonc wrangler.personal-2.local.jsonc   # gitignored
+ *   # replace <GROUP> with the slug, fill in the REPLACE_WITH_* values
+ *   wrangler deploy -c wrangler.personal-2.local.jsonc
+ *
+ * <GROUP> becomes a Worker name: alphanumerics and dashes only, no
+ * underscores. Each group needs its own hub AND its own projector + D1: the
+ * projector is
+ * single-tenant (no user_id column), so a shared one merges both corpora.
+ * Secrets, per group: SYNC_STATIC_TOKEN, CMEM_INTERNAL_PROJECTOR_SECRET.
+ * See docs/public/self-hosted-sync.mdx for the full rationale.
+ */
+{
+	"name": "sync-hub-<GROUP>",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-14",
+	"exports": {
+		"SyncHub": {
+			"type": "durable-object",
+			"storage": "sqlite"
+		}
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "SYNC_HUB",
+				"class_name": "SyncHub"
+			}
+		]
+	},
+	// Must name THIS group's projector: a shared projector merges both corpora.
+	"services": [
+		{
+			"binding": "PROJECTOR",
+			"service": "cmem-self-host-<GROUP>"
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "AUTH_CACHE",
+			// wrangler kv namespace create sync-hub-<GROUP>-AUTH_CACHE
+			"id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+		}
+	],
+	"vars": {
+		"AUTH_MODE": "static",
+		// A FRESH uuid: reusing another group's user id puts both in the same
+		// Durable Object and the isolation is gone.
+		"SYNC_STATIC_USER_ID": "REPLACE_WITH_THIS_GROUPS_USER_ID",
+		// Unused in static mode; empty so a fall-through fails closed.
+		"TOKEN_VERIFY_URL": "",
+		"AUTH_CACHE_TTL_SECONDS": "60",
+		"INTERNAL_PROJECTOR_URL": "https://cmem-self-host-<GROUP>.<SUBDOMAIN>.workers.dev/internal/project",
+		"KILL_SWITCH_CACHE_MS": "",
+		// Watchdog vars empty and no crons: fleet-ops alerting, not needed here.
+		"ACCOUNT_ID": "",
+		"WATCHDOG_DO_NAMESPACE_ID": "",
+		"WATCHDOG_SCRIPT_NAME": "",
+		"WATCHDOG_REQUESTS_ALERT": "",
+		"WATCHDOG_REQUESTS_KILL": "",
+		"WATCHDOG_DURATION_ALERT_GBS": "",
+		"WATCHDOG_DURATION_KILL_GBS": "",
+		"WATCHDOG_ROWS_WRITTEN_ALERT": "",
+		"WATCHDOG_ROWS_WRITTEN_KILL": "",
+		"WATCHDOG_ROWS_READ_ALERT": "",
+		"WATCHDOG_ROWS_READ_KILL": ""
+	},
+	"observability": {
+		"enabled": true
+	}
+}

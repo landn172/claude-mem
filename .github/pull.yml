@@ -1,0 +1,10 @@
+# mergeMethod must stay `merge`: `hardreset` force-pushes upstream over main
+# and discards local commits. Only read from the default branch.
+version: "1"
+rules:
+  - base: main
+    upstream: thedotmack:main
+    mergeMethod: merge
+    mergeUnstable: false
+label: ":arrow_heading_down: pull"
+conflictLabel: "upstream-merge-conflict"

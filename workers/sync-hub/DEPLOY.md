@@ -296,7 +296,8 @@ curl "http://localhost:8787/__scheduled?cron=7+*+*+*+*"
 Poll-mode projection catch-up (keep the switch ON until spend is green): `PLAN.md`.
 
 State = presence of KV key `control:kill-switch` in `AUTH_CACHE`. Tripped ⇒
-WS upgrades answer `503 {"error":…,"mode":"poll"}` and every HTTP sync
+WS upgrades (`/v1/sync/ws`, `/v1/sync/realtime`) and `POST /v1/sync/realtime-token`
+answer `503 {"error":…,"mode":"poll"}` and every HTTP sync
 response carries `X-Sync-Mode: poll`; clients close their sockets, suppress
 reconnects, and keep polling (their polls are also the re-probe). Push-path
 projection still runs for those HTTP writes (bounded drain + catch-up) so

@@ -52,3 +52,17 @@ docker/install-test/
 
 # Local session report artifacts (not part of distribution)
 reports/
+
+# Self-host deployment configs with personal resource ids / URLs
+# (committed templates: workers/sync-hub/wrangler.personal.jsonc,
+#  workers/self-host/wrangler.jsonc)
+workers/sync-hub/wrangler.personal.local.jsonc
+workers/self-host/wrangler.local.jsonc
+workers/self-host/.dev.vars*
+workers/self-host/.wrangler/
+workers/.wrangler/
+# per-group copies of the isolated-group templates (wrangler.<group>.local.jsonc)
+workers/sync-hub/wrangler.*.local.jsonc
+workers/self-host/wrangler.*.local.jsonc
+# wrangler writes this cache wherever it is invoked from
+.wrangler/
