@@ -287,7 +287,8 @@ curl "http://localhost:8787/__scheduled?cron=7+*+*+*+*"
 ## 3. Kill switch operations (Phase 5 task 2)
 
 State = presence of KV key `control:kill-switch` in `AUTH_CACHE`. Tripped ⇒
-WS upgrades answer `503 {"error":…,"mode":"poll"}` and every HTTP sync
+WS upgrades (`/v1/sync/ws`, `/v1/sync/realtime`) and `POST /v1/sync/realtime-token`
+answer `503 {"error":…,"mode":"poll"}` and every HTTP sync
 response carries `X-Sync-Mode: poll`; clients close their sockets, suppress
 reconnects, and keep polling (their polls are also the re-probe).
 

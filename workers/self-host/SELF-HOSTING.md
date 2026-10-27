@@ -67,7 +67,7 @@ live and reset afterwards:
 ```sh
 bun workers/sync-hub/canary/canary.ts \
   --hub https://sync-hub-personal.<sub>.workers.dev \
-  --user $SYNC_STATIC_USER_ID --token $SYNC_STATIC_TOKEN --cycles 3
+  --user $SYNC_STATIC_USER_ID --token $SYNC_STATIC_TOKEN --cycles 3 --interval-ms 1000
 # expect "converged":true — then wipe the canary's ops:
 curl -s -X POST https://sync-hub-personal.<sub>.workers.dev/internal/v1/sync/reset \
   -H "Authorization: Bearer $CMEM_INTERNAL_PROJECTOR_SECRET" \
@@ -97,6 +97,12 @@ restart the worker and confirm:
 curl -s -X POST http://127.0.0.1:$PORT/api/admin/restart
 curl -s http://127.0.0.1:$PORT/api/sync/status   # configured:true, hub.reachable:true
 ```
+
+claude-mem 13.37+ also opens a live channel (`POST /v1/sync/realtime-token`,
+then a WebSocket on `/v1/sync/realtime`), signed with
+`CMEM_INTERNAL_PROJECTOR_SECRET`, so writes reach the other machines in about
+a second rather than on the next 30 s / 5 min poll. A worker that saw a hub
+without it re-checks hourly, so restart workers after upgrading the hub.
 
 ## 5. Point MCP consumers at your memory
 

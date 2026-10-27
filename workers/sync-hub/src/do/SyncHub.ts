@@ -20,6 +20,14 @@ import {
 	PROJECTION_PAGE_MAX_OPS,
 	projectionRequestBytes,
 } from "../projection-protocol";
+import {
+	channelTopic,
+	nowSeconds,
+	REALTIME_PATH,
+	realtimeSecret,
+	verifyRealtimeToken,
+	type PhoenixFrame,
+} from "../realtime";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_PAGE = 500;
@@ -180,6 +188,49 @@ function toChange(row: {
 	};
 }
 
+/** Socket state that must survive hibernation, stored as the WebSocket attachment. */
+interface RealtimeSession {
+	proto: "phoenix";
+	device_id: string;
+	user_id: string;
+	joined: boolean;
+	expires_at: number;
+}
+
+function socketAttachment(ws: WebSocket): Record<string, unknown> | null {
+	try {
+		const attachment = ws.deserializeAttachment() as unknown;
+		return attachment !== null && typeof attachment === "object"
+			? attachment as Record<string, unknown>
+			: null;
+	} catch {
+		return null;
+	}
+}
+
+function realtimeSession(attachment: Record<string, unknown> | null): RealtimeSession | null {
+	return attachment?.proto === "phoenix" ? attachment as unknown as RealtimeSession : null;
+}
+
+function sendPhoenix(ws: WebSocket, frame: Record<string, unknown>): void {
+	try { ws.send(JSON.stringify(frame)); } catch {}
+}
+
+function phoenixReply(
+	ws: WebSocket,
+	request: PhoenixFrame,
+	status: "ok" | "error",
+	response: Record<string, unknown> = {},
+): void {
+	sendPhoenix(ws, {
+		topic: request.topic,
+		event: "phx_reply",
+		payload: { status, response },
+		ref: request.ref ?? null,
+		join_ref: request.join_ref ?? null,
+	});
+}
+
 export class SyncHub extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -286,6 +337,7 @@ export class SyncHub extends DurableObject<Env> {
 		if (request.headers.get("Upgrade") !== "websocket") {
 			return new Response("SyncHub expected Upgrade: websocket", { status: 426 });
 		}
+		if (new URL(request.url).pathname === REALTIME_PATH) return this.acceptRealtime(request);
 		const deviceId = (request.headers.get("X-Device-Id") ?? "").trim();
 		if (deviceId.length === 0) return new Response("missing X-Device-Id header", { status: 400 });
 		const deviceName = normalizeDeviceName(request.headers.get("X-Device-Name"));
@@ -306,14 +358,84 @@ export class SyncHub extends DurableObject<Env> {
 		return new Response(null, { status: 101, webSocket: client });
 	}
 
-	webSocketMessage(_ws: WebSocket, _message: ArrayBuffer | string): void {}
+	/** The front Worker already checked the apikey; it is re-verified here so no header is trusted. */
+	private async acceptRealtime(request: Request): Promise<Response> {
+		const secret = realtimeSecret(this.env);
+		const apikey = new URL(request.url).searchParams.get("apikey") ?? "";
+		const claims = secret === null ? null : await verifyRealtimeToken(secret, apikey, nowSeconds());
+		if (claims === null) return new Response("invalid realtime apikey", { status: 401 });
+		const [client, server] = Object.values(new WebSocketPair());
+		this.ctx.acceptWebSocket(server);
+		const session: RealtimeSession = {
+			proto: "phoenix",
+			device_id: claims.deviceId,
+			user_id: claims.userId,
+			joined: false,
+			expires_at: claims.expiresAt,
+		};
+		server.serializeAttachment(session);
+		return new Response(null, { status: 101, webSocket: client });
+	}
+
+	async webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): Promise<void> {
+		const session = realtimeSession(socketAttachment(ws));
+		if (session === null || typeof message !== "string") return;
+		let frame: PhoenixFrame;
+		try {
+			frame = JSON.parse(message) as PhoenixFrame;
+		} catch {
+			return;
+		}
+		if (frame === null || typeof frame !== "object") return;
+		if (frame.topic === "phoenix") {
+			if (frame.event === "heartbeat") phoenixReply(ws, frame, "ok");
+			return;
+		}
+		if (frame.topic !== channelTopic(session.user_id)) {
+			phoenixReply(ws, frame, "error", { reason: "unknown topic" });
+			return;
+		}
+		switch (frame.event) {
+			case "phx_join":
+			case "access_token": {
+				const payload = frame.payload as { access_token?: unknown } | null;
+				const secret = realtimeSecret(this.env);
+				const claims = secret === null || typeof payload?.access_token !== "string"
+					? null
+					: await verifyRealtimeToken(secret, payload.access_token, nowSeconds());
+				if (claims === null || claims.userId !== session.user_id) {
+					phoenixReply(ws, frame, "error", { reason: "invalid access token" });
+					return;
+				}
+				const joined = frame.event === "phx_join" ? true : session.joined;
+				ws.serializeAttachment({ ...session, joined, expires_at: claims.expiresAt });
+				phoenixReply(ws, frame, "ok");
+				return;
+			}
+			case "phx_leave":
+				ws.serializeAttachment({ ...session, joined: false });
+				phoenixReply(ws, frame, "ok");
+				return;
+			default:
+				return;
+		}
+	}
+
 	webSocketClose(_ws: WebSocket, _code: number, _reason: string, _wasClean: boolean): void {}
 	webSocketError(_ws: WebSocket, _error: unknown): void {}
 
 	private fanOutCommitted(originDeviceId: string, headBefore: string): void {
 		try {
-			const sockets = this.ctx.getWebSockets();
-			if (sockets.length === 0) return;
+			const legacySockets: WebSocket[] = [];
+			const liveSockets: Array<[WebSocket, RealtimeSession]> = [];
+			for (const ws of this.ctx.getWebSockets()) {
+				const attachment = socketAttachment(ws);
+				if (attachment?.device_id === originDeviceId) continue;
+				const session = realtimeSession(attachment);
+				if (session === null) legacySockets.push(ws);
+				else if (session.joined) liveSockets.push([ws, session]);
+			}
+			if (legacySockets.length === 0 && liveSockets.length === 0) return;
 			const sql = this.ctx.storage.sql;
 			const stats = sql.exec<{ n: number; body_len: number }>(
 				`SELECT COUNT(*) AS n,
@@ -328,6 +450,27 @@ export class SyncHub extends DurableObject<Env> {
 			if (stats.n === 0) return;
 			const epoch = this.meta("epoch");
 			const head = this.headSeq();
+			const now = nowSeconds();
+			for (const [ws, session] of liveSockets) {
+				const topic = channelTopic(session.user_id);
+				if (session.expires_at <= now) {
+					sendPhoenix(ws, {
+						topic,
+						event: "system",
+						payload: { status: "error", message: "Token has expired", extension: "system", channel: topic },
+						ref: null,
+					});
+					try { ws.close(1000, "realtime token expired"); } catch {}
+					continue;
+				}
+				sendPhoenix(ws, {
+					topic,
+					event: "broadcast",
+					payload: { type: "broadcast", event: "advance", payload: { epoch, head_seq: head } },
+					ref: null,
+				});
+			}
+			if (legacySockets.length === 0) return;
 			let frame: string;
 			if (stats.n > ADVANCE_MAX_OPS || stats.body_len > ADVANCE_MAX_FRAME_BYTES) {
 				frame = JSON.stringify({ type: "advance", epoch, head_seq: head });
@@ -352,13 +495,7 @@ export class SyncHub extends DurableObject<Env> {
 					frame = JSON.stringify({ type: "advance", epoch, head_seq: head });
 				}
 			}
-			for (const ws of sockets) {
-				let attachedDevice: string | null = null;
-				try {
-					const attachment = ws.deserializeAttachment() as { device_id?: unknown } | null;
-					attachedDevice = typeof attachment?.device_id === "string" ? attachment.device_id : null;
-				} catch {}
-				if (attachedDevice === originDeviceId) continue;
+			for (const ws of legacySockets) {
 				try { ws.send(frame); } catch {}
 			}
 		} catch (error) {

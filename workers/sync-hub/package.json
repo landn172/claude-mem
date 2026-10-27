@@ -8,8 +8,8 @@
 		"dev": "wrangler dev",
 		"start": "wrangler dev",
 		"e2e:serve": "node test/run-miniflare-pro-e2e.mjs",
-		"test": "vitest run --exclude \"test/ws.test.ts\"",
-		"test:ws": "vitest run --maxWorkers=1 --no-isolate test/ws.test.ts",
+		"test": "vitest run --exclude \"test/ws.test.ts\" --exclude \"test/realtime.test.ts\"",
+		"test:ws": "vitest run --maxWorkers=1 --no-isolate test/ws.test.ts test/realtime.test.ts",
 		"lint": "eslint .",
 		"cf-typegen": "wrangler types --strict-vars=false"
 	},

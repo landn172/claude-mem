@@ -22,6 +22,10 @@
  *                            authentication (canonical-userId binding) as
  *                            every other route; the socket itself carries
  *                            nothing durable — it is a downstream hint lane.
+ *   POST /v1/sync/realtime-token — mint the signed apikey/access_token for
+ *                            the Phoenix live channel (src/realtime.ts).
+ *   GET  /v1/sync/realtime — Phoenix-protocol WebSocket for ≥13.37 clients,
+ *                            authenticated by its signed `apikey` query param.
  *   POST /internal/v1/sync/metadata    — payload-free Hub state for Pro.
  *   POST /internal/v1/sync/device-name — rename an existing Hub device.
  *   POST /internal/v1/sync/reset       — wipe one user's Hub to pristine
@@ -48,6 +52,15 @@ import {
 	PROJECTION_PROTOCOL_VERSION,
 	serializeProjectionRequest,
 } from "./projection-protocol";
+import {
+	mintRealtimeToken,
+	nowSeconds,
+	REALTIME_PATH,
+	REALTIME_TOKEN_TTL_SECONDS,
+	realtimeSecret,
+	realtimeTopic,
+	verifyRealtimeToken,
+} from "./realtime";
 import { runWatchdog } from "./watchdog";
 
 // The DO class must be exported from the Worker entrypoint.
@@ -457,6 +470,42 @@ async function handleGetStatus(
 	} catch (e) {
 		return mapHubError(e);
 	}
+}
+
+function pollModeRefusal(error: string): Response {
+	const refusal = json(503, { error, mode: SYNC_MODE_POLL });
+	refusal.headers.set(SYNC_MODE_HEADER, SYNC_MODE_POLL);
+	return refusal;
+}
+
+async function handleRealtimeToken(url: URL, env: Env, userId: string, deviceId: string): Promise<Response> {
+	const secret = realtimeSecret(env);
+	if (secret === null) return errorResponse(404, "realtime is not configured on this hub");
+	const expiresAt = nowSeconds() + REALTIME_TOKEN_TTL_SECONDS;
+	const token = await mintRealtimeToken(secret, { userId, deviceId, expiresAt });
+	return json(200, {
+		access_token: token,
+		expires_at: expiresAt,
+		realtime_url: `${url.protocol === "http:" ? "ws" : "wss"}://${url.host}${REALTIME_PATH}`,
+		apikey: token,
+		topic: realtimeTopic(userId),
+	});
+}
+
+/** Authenticated by the signed `apikey` query param alone: WebSocket clients cannot set headers. */
+async function handleRealtimeUpgrade(request: Request, url: URL, env: Env): Promise<Response> {
+	if (request.method !== "GET") return errorResponse(405, "use GET");
+	if (request.headers.get("Upgrade") !== "websocket") {
+		return errorResponse(426, "expected Upgrade: websocket");
+	}
+	const secret = realtimeSecret(env);
+	if (secret === null) return errorResponse(404, "not found");
+	const claims = await verifyRealtimeToken(secret, url.searchParams.get("apikey") ?? "", nowSeconds());
+	if (claims === null) return errorResponse(401, "invalid or expired realtime apikey");
+	if ((await readKillSwitch(env)).tripped) {
+		return pollModeRefusal("sync realtime disabled — hub is in poll mode");
+	}
+	return env.SYNC_HUB.getByName(claims.userId).fetch(request);
 }
 
 function hasInternalCredential(request: Request, env: Env): boolean {
@@ -936,11 +985,13 @@ export default {
 			if (request.method !== "POST") return errorResponse(405, "use POST");
 			return handleHubReset(request, env);
 		}
+		if (pathname === REALTIME_PATH) return handleRealtimeUpgrade(request, url, env);
 
 		if (
 			pathname !== "/v1/sync/ops" &&
 			pathname !== "/v1/sync/changes" &&
 			pathname !== "/v1/sync/status" &&
+			pathname !== "/v1/sync/realtime-token" &&
 			pathname !== "/v1/sync/ws"
 		) {
 			return errorResponse(404, "not found");
@@ -981,12 +1032,7 @@ export default {
 				// the switch is un-pinning DOs. 503 + a JSON body clients
 				// recognize ({mode: "poll"}); clients suppress reconnects until
 				// the header disappears from their HTTP responses.
-				const refusal = json(503, {
-					error: "sync websocket disabled — hub is in poll mode",
-					mode: SYNC_MODE_POLL,
-				});
-				refusal.headers.set(SYNC_MODE_HEADER, SYNC_MODE_POLL);
-				return refusal;
+				return pollModeRefusal("sync websocket disabled — hub is in poll mode");
 			}
 			const stub = env.SYNC_HUB.getByName(auth.userId);
 			return stub.fetch(request);
@@ -1006,6 +1052,14 @@ export default {
 				if (request.method !== "GET") return errorResponse(405, "use GET");
 				if (!auth.deviceId) return errorResponse(400, "missing X-Device-Id header");
 				return handleGetChanges(url, env, auth.userId, auth.deviceId, auth.deviceName);
+			}
+
+			if (pathname === "/v1/sync/realtime-token") {
+				if (request.method !== "POST") return errorResponse(405, "use POST");
+				if (!auth.deviceId) return errorResponse(400, "missing X-Device-Id header");
+				// 503 (not 404) so 13.37 clients retry with backoff instead of waiting an hour.
+				if (killSwitch.tripped) return pollModeRefusal("sync realtime disabled — hub is in poll mode");
+				return handleRealtimeToken(url, env, auth.userId, auth.deviceId);
 			}
 
 			// /v1/sync/status

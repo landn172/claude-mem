@@ -113,7 +113,7 @@ log, so reset afterwards.
 ```sh
 bun workers/sync-hub/canary/canary.ts \
   --hub https://sync-hub-personal.<SUBDOMAIN>.workers.dev \
-  --user $SYNC_STATIC_USER_ID --token $SYNC_STATIC_TOKEN --cycles 3
+  --user $SYNC_STATIC_USER_ID --token $SYNC_STATIC_TOKEN --cycles 3 --interval-ms 1000
 ```
 
 Expect `"converged":true`. Then wipe what the canary wrote:
@@ -153,6 +153,17 @@ curl -s http://127.0.0.1:$PORT/api/sync/status   # configured:true, hub.reachabl
 ```
 
 Full settings table and status fields: [Cloud Sync](/cloud-sync).
+
+### Live updates
+
+claude-mem 13.37+ asks the hub for a live channel (`POST /v1/sync/realtime-token`,
+then a WebSocket on `/v1/sync/realtime`). The hub signs that channel's
+credentials with `CMEM_INTERNAL_PROJECTOR_SECRET`, so it needs no extra setup:
+a write on one machine reaches the others in about a second instead of on the
+next 30-second (active) or 5-minute (idle) poll. Each open channel wakes the
+hub's Durable Object for one heartbeat every 25 seconds, well inside the Free
+plan's request allowance. A worker that saw a hub without the live channel
+re-checks only once an hour; restart it after upgrading the hub.
 
 ## 6. Point MCP consumers at your memory
 

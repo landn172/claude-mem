@@ -57,3 +57,6 @@ reports/
 #  workers/self-host/wrangler.jsonc)
 workers/sync-hub/wrangler.personal.local.jsonc
 workers/self-host/wrangler.local.jsonc
+workers/self-host/.dev.vars*
+workers/self-host/.wrangler/
+workers/.wrangler/
