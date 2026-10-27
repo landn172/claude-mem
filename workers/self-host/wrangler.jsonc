@@ -1,0 +1,41 @@
+/**
+ * Companion worker for a personal self-hosted sync deployment
+ * (workers/sync-hub/wrangler.personal.jsonc). One worker, two jobs:
+ *
+ *   POST /internal/project — the projection endpoint the hub REQUIRES
+ *     (pushes 503 until the projection checkpoint covers head_seq). Applies
+ *     canonical ops into the MEMDB D1 database, FTS5-indexed.
+ *   /mcp (and /u/<MCP_TOKEN>/mcp) — a remote MCP endpoint (Streamable HTTP)
+ *     over the projected memory, for any MCP-aware agent on any machine.
+ *
+ * Secrets (wrangler secret put <NAME>):
+ *   CMEM_INTERNAL_PROJECTOR_SECRET — must equal the sync hub's copy.
+ *   MCP_TOKEN                      — openssl rand -hex 32; the remote MCP
+ *                                    credential handed to agents.
+ *
+ * This committed file is a TEMPLATE with placeholders only — your real D1
+ * database id lives in a gitignored copy:
+ *
+ *   cp wrangler.jsonc wrangler.local.jsonc
+ *   wrangler d1 create cmem-memory     # paste the id into wrangler.local.jsonc
+ *   wrangler deploy -c wrangler.local.jsonc
+ *
+ * The schema is applied lazily and idempotently by the worker itself on
+ * first use — no `wrangler d1 execute` step required.
+ */
+{
+	"name": "cmem-self-host",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-14",
+	"d1_databases": [
+		{
+			"binding": "MEMDB",
+			"database_name": "cmem-memory",
+			// Created via `wrangler d1 create cmem-memory` (resource id, not a secret).
+			"database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+		}
+	],
+	"observability": {
+		"enabled": true
+	}
+}

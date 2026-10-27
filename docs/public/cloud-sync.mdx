@@ -109,6 +109,11 @@ turn sync off.
    deploy runbook); use the hub URL your cmem.ai account documentation
    provides for it.
 
+<Note>
+Run the hub on a Cloudflare account you control and mint the token, user id,
+and hub URL yourself — see [Self-Hosted Cloud Sync](/self-hosted-sync).
+</Note>
+
 Run the `/cloud-sync` skill in Claude Code to check status and walk through
 setup. It writes the settings into `~/.claude-mem/settings.json` (mode
 `0600`) without ever echoing the token, restarts the worker, and verifies the

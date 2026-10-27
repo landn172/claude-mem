@@ -18,6 +18,25 @@ interface Env {
 	/** Shared Hub/Pro internal projector and payload-free metadata credential. */
 	CMEM_INTERNAL_PROJECTOR_SECRET?: string;
 	/**
+	 * Self-host auth (wrangler.personal.jsonc): "static" replaces the
+	 * TOKEN_VERIFY_URL/KV path with a constant-time compare against the two
+	 * bindings below. Unset or any other value ⇒ the default verify path.
+	 * AUTH_MODE and SYNC_STATIC_USER_ID are vars in the personal config only
+	 * (absent from wrangler.jsonc, hence typed here, not generated);
+	 * SYNC_STATIC_TOKEN is a secret: `wrangler secret put SYNC_STATIC_TOKEN
+	 * -c wrangler.personal.local.jsonc` (the gitignored copy of the template).
+	 */
+	AUTH_MODE?: string;
+	SYNC_STATIC_USER_ID?: string;
+	SYNC_STATIC_TOKEN?: string;
+	/**
+	 * Self-host only (wrangler.personal.jsonc `services`): service binding to
+	 * the companion projector Worker. Same-zone workers.dev fetches do not
+	 * route Worker-to-Worker, so projection pages go through this binding
+	 * when it exists; absent (cmem.ai deployment) global fetch is used.
+	 */
+	PROJECTOR?: Fetcher;
+	/**
 	 * Cloudflare API token for the GraphQL Analytics API.
 	 * Scope: Account → Account Analytics → Read.
 	 * `wrangler secret put ANALYTICS_API_TOKEN`
